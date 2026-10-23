@@ -19,6 +19,11 @@
 
 #include "device_globals_second_tu.hpp"
 
+// isaac_helper.hpp (reached through isaac_texture.hpp) uses jansson types
+// without including jansson.h itself. ISAAC's own translation units get the
+// header via isaac_communicator.hpp, so the main test TU includes it first.
+#include <jansson.h>
+
 #include <isaac/isaac_common_kernel.hpp>
 #include <isaac/isaac_ssao_kernel.hpp>
 
@@ -37,6 +42,7 @@ namespace
     constexpr int kSsaoNoiseSize = 16;
     constexpr int kInitializerCheckCount = 8;
     constexpr int kFunctionChainSources = 4;
+    constexpr int kSecondTUReadCount = 4;
     constexpr unsigned char kSimulationPaddingByte = 0x5A;
 
     // ---------------------------------------------------------------------
@@ -429,30 +435,32 @@ namespace
 
         auto output = alpaka::onHost::alloc<ReadOutput>(device, ISAAC_IDX_TYPE(1));
         auto outputHost = alpaka::onHost::alloc<ReadOutput>(alpaka::onHost::makeHostDevice(), ISAAC_IDX_TYPE(1));
-        auto projectionOutput = alpaka::onHost::alloc<isaac::isaac_float>(device, ISAAC_IDX_TYPE(16));
-        auto projectionOutputHost
-            = alpaka::onHost::alloc<isaac::isaac_float>(alpaka::onHost::makeHostDevice(), ISAAC_IDX_TYPE(16));
+        auto secondTUOutput
+            = alpaka::onHost::alloc<isaac::isaac_float4>(device, ISAAC_IDX_TYPE(kSecondTUReadCount));
+        auto secondTUOutputHost = alpaka::onHost::alloc<isaac::isaac_float4>(
+            alpaka::onHost::makeHostDevice(),
+            ISAAC_IDX_TYPE(kSecondTUReadCount));
 
         // Ordering: all initialisation copies and the reading kernel are
         // enqueued on the same non-blocking queue without an intermediate wait.
         alpaka::onHost::memcpy(queue, isaac::InverseMVPMatrix, &sentinels.inverse);
         alpaka::onHost::memcpy(queue, isaac::ModelViewMatrix, &sentinels.modelview);
         alpaka::onHost::memcpy(queue, isaac::ProjectionMatrix, &sentinels.projection);
+        alpaka::onHost::memcpy(queue, isaac::SimulationSize, &sentinels.simulationSize);
         // Written from the second translation unit to prove the inline device
         // global has one shared instance across TUs.
-        isaac_test::secondTUWriteSimulationSize(queue, sentinels.simulationSize);
-        alpaka::onHost::memcpy(queue, isaac::FunctorParameter, &sentinels.functorParameter[0]);
+        isaac_test::secondTUWriteFunctorParameter(queue, &sentinels.functorParameter[0]);
         alpaka::onHost::memcpy(queue, isaac::SSAOKernelArray, &sentinels.ssaoKernel[0]);
         alpaka::onHost::memcpy(queue, isaac::SSAONoiseArray, &sentinels.ssaoNoise[0]);
 
         const alpaka::Vec<ISAAC_IDX_TYPE, 3u> one(ISAAC_IDX_TYPE(1), ISAAC_IDX_TYPE(1), ISAAC_IDX_TYPE(1));
         queue.enqueue(alpaka::onHost::ThreadSpec{one, one}, ReadAllKernel{}, alpaka::onHost::data(output));
         if(iteration == 0)
-            isaac_test::secondTUEnqueueProjectionMatrixRead(queue, alpaka::onHost::data(projectionOutput));
+            isaac_test::secondTUEnqueueFunctorParameterRead(queue, alpaka::onHost::data(secondTUOutput));
 
         copyToHost(queue, outputHost, output);
         if(iteration == 0)
-            copyToHost(queue, projectionOutputHost, projectionOutput);
+            copyToHost(queue, secondTUOutputHost, secondTUOutput);
 
         ReadOutput const& got = *alpaka::onHost::data(outputHost);
         std::string detail;
@@ -507,14 +515,14 @@ namespace
            && std::memcmp(&simulationReadback, &sentinels.simulationSize, sizeof(simulationReadback)) != 0)
             detail = "SimulationSize bytes (padding included) do not round-trip";
 
-        // Cross-TU read of ProjectionMatrix.
+        // Cross-TU read of FunctorParameter: the second TU read the same device
+        // global instance that the main TU just wrote.
         if(iteration == 0 && detail.empty())
         {
-            const auto* projectionValues = glm::value_ptr(sentinels.projection);
-            for(int i = 0; i < 16; ++i)
-                if(!close(alpaka::onHost::data(projectionOutputHost)[i], projectionValues[i]))
+            for(int i = 0; i < kSecondTUReadCount; ++i)
+                if(!sameVec(alpaka::onHost::data(secondTUOutputHost)[i], sentinels.functorParameter[i]))
                 {
-                    detail = "ProjectionMatrix read from the second TU mismatch";
+                    detail = "FunctorParameter read from the second TU mismatch";
                     break;
                 }
         }

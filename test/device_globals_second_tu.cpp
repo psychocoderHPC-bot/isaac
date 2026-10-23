@@ -13,36 +13,40 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with ISAAC.  If not, see <www.gnu.org/licenses/>. */
 
+// This TU deliberately includes only device_globals_second_tu.hpp, which pulls
+// isaac_functor_chain.hpp. That header declares FunctorParameter and
+// FunctionChain without reaching the non-inline host helpers in isaac_helper.hpp.
+
 #include "device_globals_second_tu.hpp"
 
 namespace
 {
-    // Reads a device global declared in isaac_common_kernel.hpp from a second
+    constexpr int kSecondTUReadCount = 4;
+
+    // Reads a device global declared in isaac_functor_chain.hpp from a second
     // translation unit than the writer. A missing `inline` on the declaration
     // would either fail to link or produce two distinct instances.
-    struct SecondTUProjectionMatrixReader
+    struct SecondTUFunctorParameterReader
     {
         template<typename T_Acc>
-        ISAAC_DEVICE void operator()(T_Acc const&, isaac::isaac_float* out) const
+        ISAAC_DEVICE void operator()(T_Acc const&, isaac::isaac_float4* out) const
         {
-            auto const& matrix = isaac::ProjectionMatrix.get();
-            for(int column = 0; column < 4; ++column)
-                for(int row = 0; row < 4; ++row)
-                    out[column * 4 + row] = matrix[column][row];
+            for(int i = 0; i < kSecondTUReadCount; ++i)
+                out[i] = isaac::FunctorParameter.get()[i];
         }
     };
 } // namespace
 
 namespace isaac_test
 {
-    void secondTUWriteSimulationSize(TestQueue const& queue, isaac::SimulationSizeStruct const& value)
+    void secondTUWriteFunctorParameter(TestQueue const& queue, isaac::isaac_float4 const* values)
     {
-        alpaka::onHost::memcpy(queue, isaac::SimulationSize, &value);
+        alpaka::onHost::memcpy(queue, isaac::FunctorParameter, values);
     }
 
-    void secondTUEnqueueProjectionMatrixRead(TestQueue const& queue, isaac::isaac_float* out)
+    void secondTUEnqueueFunctorParameterRead(TestQueue const& queue, isaac::isaac_float4* out)
     {
         const alpaka::Vec<ISAAC_IDX_TYPE, 3u> one(ISAAC_IDX_TYPE(1), ISAAC_IDX_TYPE(1), ISAAC_IDX_TYPE(1));
-        queue.enqueue(alpaka::onHost::ThreadSpec{one, one}, SecondTUProjectionMatrixReader{}, out);
+        queue.enqueue(alpaka::onHost::ThreadSpec{one, one}, SecondTUFunctorParameterReader{}, out);
     }
 } // namespace isaac_test

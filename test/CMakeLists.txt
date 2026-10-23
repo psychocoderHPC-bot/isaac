@@ -53,11 +53,11 @@ add_subdirectory(
     "${CMAKE_CURRENT_BINARY_DIR}/alpaka"
 )
 
-# Dependency discovery mirrors lib/ISAACConfig.cmake. The three kernel headers
-# under test only include alpaka, Boost and glm, so only those are linked into
-# the test binary. jansson, IceT and MPI are discovered the same way ISAAC does
-# it, but the test does not need them: none of isaac_common_kernel.hpp,
-# isaac_functor_chain.hpp or isaac_ssao_kernel.hpp pulls them in.
+# Dependency discovery mirrors lib/ISAACConfig.cmake. The kernel headers under
+# test only include alpaka, Boost and glm, so only those are linked into the
+# test binary. jansson, IceT and MPI are discovered the same way ISAAC does it
+# because isaac_helper.hpp (reached from isaac_common_kernel.hpp) needs
+# jansson; the test itself only uses the device globals.
 find_package(Boost 1.70.0 CONFIG QUIET)
 if(NOT Boost_FOUND)
     message(FATAL_ERROR "Boost (>= 1.70) is required by the ISAAC kernel headers")
@@ -102,17 +102,14 @@ add_executable(isaac_device_globals_test
     device_globals_second_tu.cpp
 )
 
-# isaac_helper.hpp (reached through isaac_common_kernel.hpp) defines six helper
-# functions without `inline`. ISAAC itself only ever includes that header from
-# one translation unit, so this never surfaces there. Including the real headers
-# from two test TUs exposes it as a duplicate-symbol link failure unrelated to
-# the device globals. Rename those six host helpers in the second TU only; no
-# linker flag is used, so any duplicate *device global* definition still fails
+# The second TU includes only device_globals_second_tu.hpp, which pulls
+# isaac_functor_chain.hpp. That header declares the device globals without
+# reaching isaac_helper.hpp, whose six non-inline host helper definitions would
+# otherwise be emitted by both TUs and fail the link for reasons unrelated to
+# the device globals. isaac_common_kernel.hpp and isaac_ssao_kernel.hpp reach
+# isaac_helper.hpp, so only the main TU includes them. No linker flag relaxes
+# duplicate-symbol checking: a duplicate *device global* definition still fails
 # the link and the cross-TU ODR check stays strict.
-set_source_files_properties(device_globals_second_tu.cpp PROPERTIES
-    COMPILE_DEFINITIONS
-    "getTicksUs=isaacTestTu2_getTicksUs;mergeJSON=isaacTestTu2_mergeJSON;setFrustum=isaacTestTu2_setFrustum;setPerspective=isaacTestTu2_setPerspective;spSetPerspectiveStereoscopic=isaacTestTu2_spSetPerspectiveStereoscopic;setOrthographic=isaacTestTu2_setOrthographic"
-)
 
 # The task requires the ISAAC include root; the test directory itself holds the
 # shared declarations used by the second translation unit.
