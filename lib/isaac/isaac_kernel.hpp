@@ -24,14 +24,13 @@
 
 namespace isaac
 {
-    template<typename T_Acc, typename T_Queue, typename T_KernelFnObj, typename... T_Args>
+    template<typename T_Queue, typename T_KernelFnObj, typename... T_Args>
     inline void executeKernelOnVolume(
         isaac_size3 volumeSize,
         T_Queue& queue,
         const T_KernelFnObj& kernelFnObj,
         T_Args&&... args)
     {
-        using Dim = alpaka::DimInt<3>;
         if(volumeSize.x == 0 || volumeSize.y == 0 || volumeSize.z == 0)
         {
             return;
@@ -51,25 +50,18 @@ namespace isaac
 #endif
         isaac_size3 gridSize = (volumeSize + blockSize - ISAAC_IDX_TYPE(1)) / blockSize;
 
-#if ALPAKA_ACC_GPU_CUDA_ENABLED == 1
-        if(boost::mpl::not_<boost::is_same<T_Acc, alpaka::AccGpuCudaRt<Dim, ISAAC_IDX_TYPE>>>::value)
-#elif ALPAKA_ACC_GPU_HIP_ENABLED == 1
-        if(boost::mpl::not_<boost::is_same<T_Acc, alpaka::AccGpuHipRt<Dim, ISAAC_IDX_TYPE>>>::value)
-#endif
+        if(queue.getApi() == alpaka::api::host)
         {
             blockSize = isaac_size3(1);
             gridSize = volumeSize;
         }
-        const alpaka::Vec<Dim, ISAAC_IDX_TYPE> threadElements(ISAAC_IDX_TYPE(1), ISAAC_IDX_TYPE(1), ISAAC_IDX_TYPE(1));
         // Coordinates need to be swapped for alpaka
-        const alpaka::Vec<Dim, ISAAC_IDX_TYPE> blocks(blockSize.z, blockSize.y, blockSize.x);
-        const alpaka::Vec<Dim, ISAAC_IDX_TYPE> grid(gridSize.z, gridSize.y, gridSize.x);
-        auto const workdiv = alpaka::WorkDivMembers<Dim, ISAAC_IDX_TYPE>(grid, blocks, threadElements);
-        auto const instance = alpaka::createTaskKernel<T_Acc>(workdiv, kernelFnObj, args...);
-        alpaka::enqueue(queue, instance);
+        const alpaka::Vec<ISAAC_IDX_TYPE, 3u> blocks(blockSize.z, blockSize.y, blockSize.x);
+        const alpaka::Vec<ISAAC_IDX_TYPE, 3u> grid(gridSize.z, gridSize.y, gridSize.x);
+        queue.enqueue(alpaka::onHost::ThreadSpec{grid, blocks}, kernelFnObj, args...);
     }
 
-    template<typename T_Acc, typename T_Queue, typename T_AccDev, typename T_Type, IndexType T_indexType>
+    template<typename T_Queue, typename T_AccDev, typename T_Type, IndexType T_indexType>
     void syncOwnGuardTextures(
         T_Queue& queue,
         SyncedTexture3DAllocator<T_AccDev, T_Type, T_indexType>& texture,
@@ -81,7 +73,7 @@ namespace isaac
             if(neighbourIds.array[i] != -1)
             {
                 Texture<T_Type, 3>& dstTexture = texture.getOwnGuardTexture(i);
-                executeKernelOnVolume<T_Acc>(
+                executeKernelOnVolume(
                     dstTexture.getSize(),
                     queue,
                     kernel,
@@ -90,10 +82,10 @@ namespace isaac
                     dstTexture);
             }
         }
-        alpaka::wait(queue);
+        alpaka::onHost::wait(queue);
     }
 
-    template<typename T_Acc, typename T_Queue, typename T_AccDev, typename T_Type, IndexType T_indexType>
+    template<typename T_Queue, typename T_AccDev, typename T_Type, IndexType T_indexType>
     void syncNeighbourGuardTextures(
         T_Queue& queue,
         SyncedTexture3DAllocator<T_AccDev, T_Type, T_indexType>& texture,
@@ -105,7 +97,7 @@ namespace isaac
             if(neighbourIds.array[i] != -1)
             {
                 Texture<T_Type, 3>& guardTexture = texture.getNeighbourGuardTexture(i);
-                executeKernelOnVolume<T_Acc>(
+                executeKernelOnVolume(
                     guardTexture.getSize(),
                     queue,
                     kernel,
@@ -114,6 +106,6 @@ namespace isaac
                     texture.getTexture());
             }
         }
-        alpaka::wait(queue);
+        alpaka::onHost::wait(queue);
     }
 } // namespace isaac

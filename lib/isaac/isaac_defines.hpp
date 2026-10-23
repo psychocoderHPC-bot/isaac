@@ -76,8 +76,6 @@
 #    define ISAAC_NO_HOST_DEVICE_WARNING
 #endif
 
-#define ISAAC_CONSTANT ALPAKA_STATIC_ACC_MEM_CONSTANT
-
 #if(BOOST_LANG_CUDA || BOOST_LANG_HIP)
 #    define ISAAC_MAX max
 #    define ISAAC_MIN min

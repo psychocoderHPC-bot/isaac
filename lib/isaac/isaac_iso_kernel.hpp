@@ -36,7 +36,7 @@ namespace isaac
         ) const
         {
             // get pixel values from thread ids
-            auto alpThreadIdx = alpaka::getIdx<alpaka::Grid, alpaka::Threads>(acc);
+            auto alpThreadIdx = acc.getIdxWithin(alpaka::onAcc::origin::grid, alpaka::onAcc::unit::threads);
             isaac_uint2 pixel = isaac_uint2(alpThreadIdx[2], alpThreadIdx[1]);
             // apply framebuffer offset to pixel
             // stop if pixel position is out of bounds
@@ -55,8 +55,8 @@ namespace isaac
 
             // Starting the main loop
             isaac_float min_size = ISAAC_MIN(
-                int(SimulationSize<T_Acc>.get().globalSize.x),
-                ISAAC_MIN(int(SimulationSize<T_Acc>.get().globalSize.y), int(SimulationSize<T_Acc>.get().globalSize.z)));
+                int(SimulationSize.get().globalSize.x),
+                ISAAC_MIN(int(SimulationSize.get().globalSize.y), int(SimulationSize.get().globalSize.z)));
             isaac_float stepSizeUnscaled = stepSize * (glm::length(ray.dir) / glm::length(ray.dir / scale));
             isaac_int startSteps = glm::ceil(ray.startDepth / stepSizeUnscaled);
             isaac_int endSteps = glm::floor(ray.endDepth / stepSizeUnscaled);
@@ -338,7 +338,7 @@ namespace isaac
         ) const
         {
             // get pixel values from thread ids
-            auto alpThreadIdx = alpaka::getIdx<alpaka::Grid, alpaka::Threads>(acc);
+            auto alpThreadIdx = acc.getIdxWithin(alpaka::onAcc::origin::grid, alpaka::onAcc::unit::threads);
             isaac_uint2 pixel = isaac_uint2(alpThreadIdx[2], alpThreadIdx[1]);
             // apply framebuffer offset to pixel
             // stop if pixel position is out of bounds
@@ -371,7 +371,7 @@ namespace isaac
             isaac_uint3 currentCell = isaac_uint3(glm::clamp(
                 isaac_int3(currentPos / scale),
                 isaac_int3(0),
-                isaac_int3(SimulationSize<T_Acc>.get().localSize - ISAAC_IDX_TYPE(1))));
+                isaac_int3(SimulationSize.get().localSize - ISAAC_IDX_TYPE(1))));
 
             isaac_float testedLength = 0;
 
@@ -418,7 +418,7 @@ namespace isaac
                     oldValues,
                     p1,
                     t1,
-                    SimulationSize<T_Acc>.get().localSize,
+                    SimulationSize.get().localSize,
                     transferArray,
                     sourceIsoThreshold,
                     persistentTextureArray,
@@ -553,7 +553,7 @@ namespace isaac
                     T_transferSize,
                     T_Source,
                     T_TransferArray,
-                    T_PersistentArray>(source, transferArray, persistentTextureArray, SimulationSize<T_Acc>.get().localSize);
+                    T_PersistentArray>(source, transferArray, persistentTextureArray, SimulationSize.get().localSize);
 
                 IsoStepSource(
                     sourceAccessor,
@@ -614,7 +614,7 @@ namespace isaac
                     transferArray,
                     persistentTextureArray,
                     advectionTextureArray,
-                    SimulationSize<T_Acc>.get().localSize);
+                    SimulationSize.get().localSize);
 
                 IsoStepSource(
                     sourceAccessor,
@@ -661,7 +661,7 @@ namespace isaac
         ) const
         {
             // get pixel values from thread ids
-            auto alpThreadIdx = alpaka::getIdx<alpaka::Grid, alpaka::Threads>(acc);
+            auto alpThreadIdx = acc.getIdxWithin(alpaka::onAcc::origin::grid, alpaka::onAcc::unit::threads);
             isaac_uint2 pixel = isaac_uint2(alpThreadIdx[2], alpThreadIdx[1]);
             // apply framebuffer offset to pixel
             // stop if pixel position is out of bounds
@@ -690,8 +690,8 @@ namespace isaac
 
             // Starting the main loop
             isaac_float min_size = ISAAC_MIN(
-                int(SimulationSize<T_Acc>.get().globalSize.x),
-                ISAAC_MIN(int(SimulationSize<T_Acc>.get().globalSize.y), int(SimulationSize<T_Acc>.get().globalSize.z)));
+                int(SimulationSize.get().globalSize.x),
+                ISAAC_MIN(int(SimulationSize.get().globalSize.y), int(SimulationSize.get().globalSize.z)));
             isaac_float stepSizeUnscaled = stepSize * (glm::length(ray.dir) / glm::length(ray.dir / scale));
             isaac_int startSteps = glm::ceil(ray.startDepth / stepSizeUnscaled);
             isaac_int endSteps = glm::floor(ray.endDepth / stepSizeUnscaled);
@@ -701,14 +701,14 @@ namespace isaac
 
             // move startSteps and endSteps to valid positions in the volume
             isaac_float3 pos = startUnscaled + stepVec * isaac_float(startSteps);
-            while((!isInLowerBounds(pos, isaac_float3(0)) || !isInUpperBounds(pos, SimulationSize<T_Acc>.get().localSize))
+            while((!isInLowerBounds(pos, isaac_float3(0)) || !isInUpperBounds(pos, SimulationSize.get().localSize))
                   && startSteps <= endSteps)
             {
                 startSteps++;
                 pos = startUnscaled + stepVec * isaac_float(startSteps);
             }
             pos = startUnscaled + stepVec * isaac_float(endSteps);
-            while((!isInLowerBounds(pos, isaac_float3(0)) || !isInUpperBounds(pos, SimulationSize<T_Acc>.get().localSize))
+            while((!isInLowerBounds(pos, isaac_float3(0)) || !isInUpperBounds(pos, SimulationSize.get().localSize))
                   && startSteps <= endSteps)
             {
                 endSteps--;
@@ -737,7 +737,7 @@ namespace isaac
                     t,
                     pos,
                     stepSizeUnscaled,
-                    SimulationSize<T_Acc>.get().localSize,
+                    SimulationSize.get().localSize,
                     transferArray,
                     sourceIsoThreshold,
                     persistentTextureArray,
@@ -757,7 +757,7 @@ namespace isaac
                     t,
                     pos,
                     stepSizeUnscaled,
-                    SimulationSize<T_Acc>.get().localSize,
+                    SimulationSize.get().localSize,
                     transferArray,
                     sourceIsoThreshold,
                     persistentTextureArray,
@@ -788,13 +788,11 @@ namespace isaac
         typename T_Filter,
         ISAAC_IDX_TYPE T_transferSize,
         typename T_WorkDiv,
-        typename T_Acc,
-        typename T_Stream,
         int T_n>
     struct IsoRenderKernelCaller
     {
         inline static void call(
-            T_Stream stream,
+            Stream& stream,
             const GBuffer& gBuffer,
             const T_VolumeSourceList& sources,
             const T_FieldSourceList& fieldSources,
@@ -823,8 +821,6 @@ namespace isaac
                     typename boost::mpl::push_back<T_Filter, boost::mpl::false_>::type,
                     T_transferSize,
                     T_WorkDiv,
-                    T_Acc,
-                    T_Stream,
                     T_n - 1>::
                     call(
                         stream,
@@ -853,8 +849,6 @@ namespace isaac
                     typename boost::mpl::push_back<T_Filter, boost::mpl::true_>::type,
                     T_transferSize,
                     T_WorkDiv,
-                    T_Acc,
-                    T_Stream,
                     T_n - 1>::
                     call(
                         stream,
@@ -883,9 +877,7 @@ namespace isaac
         typename T_AdvectionTextureArray,
         typename T_Filter,
         ISAAC_IDX_TYPE T_transferSize,
-        typename T_WorkDiv,
-        typename T_Acc,
-        typename T_Stream>
+        typename T_WorkDiv>
     struct IsoRenderKernelCaller<
         T_VolumeSourceList,
         T_FieldSourceList,
@@ -896,13 +888,11 @@ namespace isaac
         T_Filter,
         T_transferSize,
         T_WorkDiv,
-        T_Acc,
-        T_Stream,
         0 //<-- spezialisation
         >
     {
         inline static void call(
-            T_Stream stream,
+            Stream& stream,
             const GBuffer& gBuffer,
             const T_VolumeSourceList& sources,
             const T_FieldSourceList& fieldSources,
@@ -929,9 +919,7 @@ namespace isaac
                     T_transferSize,
                     FilterType::LINEAR>
                     kernel;
-                auto const instance = alpaka::createTaskKernel<T_Acc>(
-                    workdiv,
-                    kernel,
+                stream.enqueue(workdiv, kernel,
                     gBuffer,
                     sources,
                     fieldSources,
@@ -942,7 +930,6 @@ namespace isaac
                     advectionTextureArray,
                     scale,
                     clipping);
-                alpaka::enqueue(stream, instance);
             }
             else
             {
@@ -957,9 +944,7 @@ namespace isaac
                     T_transferSize,
                     FilterType::NEAREST>
                     kernel;
-                auto const instance = alpaka::createTaskKernel<T_Acc>(
-                    workdiv,
-                    kernel,
+                stream.enqueue(workdiv, kernel,
                     gBuffer,
                     sources,
                     fieldSources,
@@ -970,7 +955,6 @@ namespace isaac
                     advectionTextureArray,
                     scale,
                     clipping);
-                alpaka::enqueue(stream, instance);
             }
         }
     };

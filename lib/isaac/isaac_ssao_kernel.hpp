@@ -25,10 +25,10 @@ namespace isaac
      */
 
     // filter kernel
-    ALPAKA_STATIC_ACC_MEM_GLOBAL alpaka::DevGlobal<TAcc, isaac_float3[64]> SSAOKernelArray;
+    ALPAKA_DEVICE_GLOBAL(inline, (isaac_float3[64]), SSAOKernelArray);
 
     // vector rotation noise kernel
-    ALPAKA_STATIC_ACC_MEM_GLOBAL alpaka::DevGlobal<TAcc, isaac_float3[16]> SSAONoiseArray;
+    ALPAKA_DEVICE_GLOBAL(inline, (isaac_float3[16]), SSAONoiseArray);
 
     /**
      * @brief Calculate SSAO factor
@@ -46,7 +46,7 @@ namespace isaac
         {
             isaac_uint2 pixel;
             // get pixel values from thread ids
-            auto alpThreadIdx = alpaka::getIdx<alpaka::Grid, alpaka::Threads>(acc);
+            auto alpThreadIdx = acc.getIdxWithin(alpaka::onAcc::origin::grid, alpaka::onAcc::unit::threads);
             pixel.x = isaac_uint(alpThreadIdx[2]);
             pixel.y = isaac_uint(alpThreadIdx[1]);
 
@@ -199,7 +199,7 @@ namespace isaac
         {
             isaac_uint2 pixel;
             // get pixel values from thread ids
-            auto alpThreadIdx = alpaka::getIdx<alpaka::Grid, alpaka::Threads>(acc);
+            auto alpThreadIdx = acc.getIdxWithin(alpaka::onAcc::origin::grid, alpaka::onAcc::unit::threads);
             pixel.x = isaac_uint(alpThreadIdx[2]);
             pixel.y = isaac_uint(alpThreadIdx[1]);
 

@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <alpaka/alpaka.hpp>
 #include <boost/fusion/include/empty.hpp>
 #include <boost/fusion/include/join.hpp>
 #include <boost/fusion/include/list.hpp>
@@ -23,21 +24,17 @@
 #include <boost/mpl/size.hpp>
 #include <type_traits>
 
-namespace std
+namespace alpaka::trait
 {
-    /* @bug ISAAC is working with boost fusion lists, e.g. boost::fusion::cons<>
-     * these types are not trivially copyable but are passed as parameters to the kernel.
-     * Since alpaka 0.9.0 the requirement to be trivially copyable is correct enforced,
-     * with the result that these types can not be used as kernel parameter.
-     * This trait specialization is a temporary and risky workaround until boost fusion is
-     * removed from ISAAC.
-     * @attention This workaround can have bad effects on other libraries which using boost fusion and ISAAC.
+    /* ISAAC passes boost::fusion lists as kernel arguments. They are not
+     * trivially copyable, but the value representation is copied byte-wise by
+     * alpaka, which is safe for these stateless source descriptors.
      */
     template<typename... T>
-    struct is_trivially_copyable<boost::fusion::cons<T...>> : public integral_constant<bool, true>
+    struct IsKernelArgumentTriviallyCopyable<boost::fusion::list<T...>> : std::true_type
     {
     };
-} // namespace std
+} // namespace alpaka::trait
 
 namespace isaac
 {

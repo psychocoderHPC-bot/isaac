@@ -21,7 +21,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <map>
 #include <string>
+#include <utility>
 
 namespace isaac
 {
@@ -35,6 +37,32 @@ namespace isaac
 #ifndef ISAAC_IDX_TYPE
 #    define ISAAC_IDX_TYPE size_t
 #endif
+
+    // Concrete alpaka3 device and queue types. ISAAC_BACKEND_* is set by the
+    // example build; without it the host CPU backend is assumed.
+    using HostDevice = alpaka::onHost::Device<alpaka::api::Host, alpaka::deviceKind::Cpu>;
+#if defined(ISAAC_BACKEND_CUDA)
+    using AccDevice = alpaka::onHost::Device<alpaka::api::Cuda, alpaka::deviceKind::NvidiaGpu>;
+    inline constexpr auto accApi = alpaka::api::Cuda{};
+    inline constexpr auto accDeviceKind = alpaka::deviceKind::NvidiaGpu{};
+#elif defined(ISAAC_BACKEND_HIP)
+    using AccDevice = alpaka::onHost::Device<alpaka::api::Hip, alpaka::deviceKind::AmdGpu>;
+    inline constexpr auto accApi = alpaka::api::Hip{};
+    inline constexpr auto accDeviceKind = alpaka::deviceKind::AmdGpu{};
+#else
+    using AccDevice = HostDevice;
+    inline constexpr auto accApi = alpaka::api::Host{};
+    inline constexpr auto accDeviceKind = alpaka::deviceKind::Cpu{};
+#endif
+    using Stream = decltype(std::declval<AccDevice>().makeQueue(alpaka::queueKind::blocking));
+
+    template<typename T_Device, typename T_Type>
+    using BufferFor
+        = decltype(alpaka::onHost::alloc<T_Type>(std::declval<T_Device>(), ISAAC_IDX_TYPE{}));
+    template<typename T_Type>
+    using DeviceBuffer = BufferFor<AccDevice, T_Type>;
+    template<typename T_Type>
+    using HostBuffer = BufferFor<HostDevice, T_Type>;
 
     template<int T_n, typename T_Type>
     using isaac_vec_dim = glm::vec<T_n, T_Type, glm::defaultp>;
