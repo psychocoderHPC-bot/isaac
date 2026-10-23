@@ -75,6 +75,10 @@ endif()
 
 
 add_executable(isaac_example ${CMAKE_SOURCE_DIR}/example.cpp)
+# alpaka_finalize() stages accelerator sources into
+# <build>/alpaka_build_files/<lang>/, so a quoted include of example_details.hpp
+# is resolved relative to the staged copy, not the original example directory.
+target_include_directories(isaac_example PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 target_link_libraries(isaac_example PUBLIC ${ISAAC_LIBRARIES})
 alpaka_finalize(isaac_example)
 install(TARGETS isaac_example DESTINATION bin )
