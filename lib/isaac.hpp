@@ -1026,7 +1026,15 @@ namespace isaac
         {
             ISAAC_WAIT_VISUALIZATION
             IsaacFunctorPool functors;
-            isaac_float4 functorParameterHost[combinedSourceListSize * ISAAC_MAX_FUNCTORS];
+            // alpaka3's device-global memcpy copies sizeof(ParamArray), i.e. all
+            // ISAAC_MAX_SOURCES * ISAAC_MAX_FUNCTORS entries, and ignores the source
+            // view extent. Provide a source buffer of exactly that size and zero the
+            // unused tail so the copy stays in bounds. Only
+            // [0, combinedSourceListSize * ISAAC_MAX_FUNCTORS) holds live parameters;
+            // the zeroed tail lands in device slots the kernels never read and keeps
+            // the previous zero-initialized content.
+            isaac_float4 functorParameterHost[ISAAC_MAX_SOURCES * ISAAC_MAX_FUNCTORS];
+            memset(functorParameterHost, 0, sizeof(functorParameterHost));
             for(int i = 0; i < combinedSourceListSize; i++)
             {
                 functions[i].errorCode = 0;
@@ -1145,7 +1153,7 @@ namespace isaac
                 alpaka::api::host,
                 functorParameterHost,
                 alpaka::Vec<ISAAC_IDX_TYPE, 1u>(
-                    ISAAC_IDX_TYPE(ISAAC_MAX_FUNCTORS * combinedSourceListSize)));
+                    ISAAC_IDX_TYPE(ISAAC_MAX_FUNCTORS * ISAAC_MAX_SOURCES)));
 
             alpaka::onHost::memcpy(stream, FunctorParameter, parameterBuffer);
 
