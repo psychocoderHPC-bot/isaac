@@ -26,12 +26,12 @@ void updateParticles(T_Stream stream, T_Host3 hostBuffer, T_Dev3 deviceBuffer, T
 {
     for(ISAAC_IDX_TYPE i = 0; i < particle_count[0]; i++)
     {
-        alpaka::getPtrNative(hostBuffer)[i].x = float((int(i * 29.6f)) % 64) / 64.0f;
-        alpaka::getPtrNative(hostBuffer)[i].y = float((int(i * 23.1f)) % 64) / 64.0f;
-        alpaka::getPtrNative(hostBuffer)[i].z
+        alpaka::onHost::data(hostBuffer)[i].x = float((int(i * 29.6f)) % 64) / 64.0f;
+        alpaka::onHost::data(hostBuffer)[i].y = float((int(i * 23.1f)) % 64) / 64.0f;
+        alpaka::onHost::data(hostBuffer)[i].z
             = float((int((i * 7.9f + pos * (i % 20 + 1)) * 1000)) % 64000) / 1000.0f / 64.0f;
     }
-    alpaka::memcpy(stream, deviceBuffer, hostBuffer, particle_count);
+    alpaka::onHost::memcpy(stream, deviceBuffer, hostBuffer, particle_count);
 }
 
 template<typename T_Stream, typename T_Host, typename T_Dev>
@@ -58,12 +58,12 @@ void updateVectorField(
                     -(position.y + coord.y - globalSize.y * 0.5f) * s / isaac_float(globalSize.y),
                     (position.x + coord.x - globalSize.x * 0.5f) * s / isaac_float(globalSize.x),
                     0.3f);
-                alpaka::getPtrNative(hostBuffer)[pos] = vector;
+                alpaka::onHost::data(hostBuffer)[pos] = vector;
             }
         }
     }
-    const alpaka::Vec<alpaka::DimInt<1>, ISAAC_IDX_TYPE> dataSize(localSize.x * localSize.y * localSize.z);
-    alpaka::memcpy(stream, deviceBuffer, hostBuffer, dataSize);
+    const alpaka::Vec<ISAAC_IDX_TYPE, 1u> dataSize(localSize.x * localSize.y * localSize.z);
+    alpaka::onHost::memcpy(stream, deviceBuffer, hostBuffer, dataSize);
 }
 
 
@@ -105,17 +105,17 @@ void updateData(
                 }
                 size_t pos = x + y * localSize[0] + z * localSize[0] * localSize[1];
 
-                alpaka::getPtrNative(hostBuffer1)[pos].x = intensity;
-                alpaka::getPtrNative(hostBuffer1)[pos].y = intensity;
-                alpaka::getPtrNative(hostBuffer1)[pos].z = intensity;
-                alpaka::getPtrNative(hostBuffer2)[pos] = (2.0f - l) * (2.0f - l) / 4.0f;
+                alpaka::onHost::data(hostBuffer1)[pos].x = intensity;
+                alpaka::onHost::data(hostBuffer1)[pos].y = intensity;
+                alpaka::onHost::data(hostBuffer1)[pos].z = intensity;
+                alpaka::onHost::data(hostBuffer2)[pos] = (2.0f - l) * (2.0f - l) / 4.0f;
             }
         }
     }
-    const alpaka::Vec<alpaka::DimInt<1>, ISAAC_IDX_TYPE> dataSize(
+    const alpaka::Vec<ISAAC_IDX_TYPE, 1u> dataSize(
         ISAAC_IDX_TYPE(localSize[0]) * ISAAC_IDX_TYPE(localSize[1]) * ISAAC_IDX_TYPE(localSize[2]));
-    alpaka::memcpy(stream, deviceBuffer1, hostBuffer1, dataSize);
-    alpaka::memcpy(stream, deviceBuffer2, hostBuffer2, dataSize);
+    alpaka::onHost::memcpy(stream, deviceBuffer1, hostBuffer1, dataSize);
+    alpaka::onHost::memcpy(stream, deviceBuffer2, hostBuffer2, dataSize);
 }
 
 
@@ -303,7 +303,7 @@ void read_vtk_to_memory(
             {
                 size_t pos = t_x + t_y * localSize[0] + t_z * localSize[0] * localSize[1];
 
-                alpaka::getPtrNative(hostBuffer2)[pos] = (float) value;
+                alpaka::onHost::data(hostBuffer2)[pos] = (float) value;
             }
             x++;
             if(size_t(x) >= globalSize[0])
@@ -319,7 +319,7 @@ void read_vtk_to_memory(
         }
     }
 
-    const alpaka::Vec<alpaka::DimInt<1>, ISAAC_IDX_TYPE> dataSize(
+    const alpaka::Vec<ISAAC_IDX_TYPE, 1u> dataSize(
         ISAAC_IDX_TYPE(localSize[0]) * ISAAC_IDX_TYPE(localSize[1]) * ISAAC_IDX_TYPE(localSize[2]));
-    alpaka::memcpy(stream, deviceBuffer2, hostBuffer2, dataSize);
+    alpaka::onHost::memcpy(stream, deviceBuffer2, hostBuffer2, dataSize);
 }

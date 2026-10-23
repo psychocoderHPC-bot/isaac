@@ -15,6 +15,10 @@
 
 #define ISAAC_IDX_TYPE int
 
+#ifndef ISAAC_NO_SIMULATION
+#    define ISAAC_NO_SIMULATION 0
+#endif
+
 
 #include "example_details.hpp"
 
@@ -278,57 +282,54 @@ int main(int argc, char** argv)
     isaac_size2 framebufferSize = {ISAAC_IDX_TYPE(1920), ISAAC_IDX_TYPE(1080)};
 
     // Alpaka specific initialization
-    using AccDim = alpaka::DimInt<3>;
-    using SimDim = alpaka::DimInt<3>;
-    using DatDim = alpaka::DimInt<1>;
+    using DevAcc = isaac::AccDevice;
+    using DevHost = isaac::HostDevice;
 
-    using Acc = alpaka::AccGpuCudaRt<AccDim, ISAAC_IDX_TYPE>;
+    auto deviceSelector = alpaka::onHost::makeDeviceSelector(isaac::accApi, isaac::accDeviceKind);
+    const auto deviceCount = deviceSelector.getDeviceCount();
+    if(deviceCount == 0)
+    {
+        fprintf(stderr, "No accelerator device available for the selected ISAAC_BACKEND.\n");
+        MPI_Abort(MPI_COMM_WORLD, 1);
+        return -1;
+    }
 
-    // using Acc = alpaka::AccCpuOmp2Blocks<AccDim, ISAAC_IDX_TYPE>;
-
-    using Stream = alpaka::Queue<Acc, alpaka::Blocking>;
-
-    using DevAcc = alpaka::Dev<Acc>;
-    using DevHost = alpaka::DevCpu;
-    auto const platformHost = alpaka::Platform<DevHost>{};
-    auto const platformAcc = alpaka::Platform<DevAcc>{};
-
-    DevAcc devAcc(alpaka::getDevByIdx(platformAcc,rank % alpaka::getDevCount(platformAcc)));
-    DevHost devHost(alpaka::getDevByIdx(platformHost,0u));
-    Stream stream(devAcc);
+    DevAcc devAcc = deviceSelector.makeDevice(static_cast<uint32_t>(rank) % deviceCount);
+    DevHost devHost = alpaka::onHost::makeHostDevice();
+    auto stream = devAcc.makeQueue(alpaka::queueKind::blocking);
 
     const isaac_size3 globalSize(d[0] * VOLUME_X, d[1] * VOLUME_Y, d[2] * VOLUME_Z);
     const isaac_size3 localSize(ISAAC_IDX_TYPE(VOLUME_X), ISAAC_IDX_TYPE(VOLUME_Y), ISAAC_IDX_TYPE(VOLUME_Z));
     const isaac_size3 position(p[0] * VOLUME_X, p[1] * VOLUME_Y, p[2] * VOLUME_Z);
-    const alpaka::Vec<DatDim, ISAAC_IDX_TYPE> dataSize(
+    const alpaka::Vec<ISAAC_IDX_TYPE, 1u> dataSize(
         ISAAC_IDX_TYPE(VOLUME_X) * ISAAC_IDX_TYPE(VOLUME_Y) * ISAAC_IDX_TYPE(VOLUME_Z));
-    const alpaka::Vec<alpaka::DimInt<1>, ISAAC_IDX_TYPE> particleCount(ISAAC_IDX_TYPE(PARTICLE_COUNT));
+    const alpaka::Vec<ISAAC_IDX_TYPE, 1u> particleCount(ISAAC_IDX_TYPE(PARTICLE_COUNT));
 
     // The whole size of the rendered sub volumes
     ISAAC_IDX_TYPE prod = localSize[0] * localSize[1] * localSize[2];
 
     // Init memory
 
-    auto hostBuffer1 = alpaka::allocBuf<isaac_float3, ISAAC_IDX_TYPE>(devHost, dataSize);
-    auto deviceBuffer1 = alpaka::allocBuf<isaac_float3, ISAAC_IDX_TYPE>(devAcc, dataSize);
+    auto hostBuffer1 = alpaka::onHost::alloc<isaac_float3>(devHost, dataSize);
+    auto deviceBuffer1 = alpaka::onHost::alloc<isaac_float3>(devAcc, dataSize);
 
-    auto hostBuffer2 = alpaka::allocBuf<isaac_float, ISAAC_IDX_TYPE>(devHost, dataSize);
-    auto deviceBuffer2 = alpaka::allocBuf<isaac_float, ISAAC_IDX_TYPE>(devAcc, dataSize);
+    auto hostBuffer2 = alpaka::onHost::alloc<isaac_float>(devHost, dataSize);
+    auto deviceBuffer2 = alpaka::onHost::alloc<isaac_float>(devAcc, dataSize);
 
-    auto hostBuffer3 = alpaka::allocBuf<isaac_float3, ISAAC_IDX_TYPE>(devHost, dataSize);
-    auto deviceBuffer3 = alpaka::allocBuf<isaac_float3, ISAAC_IDX_TYPE>(devAcc, dataSize);
+    auto hostBuffer3 = alpaka::onHost::alloc<isaac_float3>(devHost, dataSize);
+    auto deviceBuffer3 = alpaka::onHost::alloc<isaac_float3>(devAcc, dataSize);
 
-    auto hostBuffer4 = alpaka::allocBuf<isaac_float3, ISAAC_IDX_TYPE>(devHost, particleCount);
-    auto deviceBuffer4 = alpaka::allocBuf<isaac_float3, ISAAC_IDX_TYPE>(devAcc, particleCount);
+    auto hostBuffer4 = alpaka::onHost::alloc<isaac_float3>(devHost, particleCount);
+    auto deviceBuffer4 = alpaka::onHost::alloc<isaac_float3>(devAcc, particleCount);
 
     // Creating source list
 
-    TestSource1 testSource1(alpaka::getPtrNative(deviceBuffer1));
-    TestSource2 testSource2(alpaka::getPtrNative(deviceBuffer2));
+    TestSource1 testSource1(alpaka::onHost::data(deviceBuffer1));
+    TestSource2 testSource2(alpaka::onHost::data(deviceBuffer2));
 
-    TestVectorFieldSource1 fieldSource(alpaka::getPtrNative(deviceBuffer3));
+    TestVectorFieldSource1 fieldSource(alpaka::onHost::data(deviceBuffer3));
 
-    ParticleSource1 particleTestSource1(alpaka::getPtrNative(deviceBuffer4), PARTICLE_COUNT);
+    ParticleSource1 particleTestSource1(alpaka::onHost::data(deviceBuffer4), PARTICLE_COUNT);
 
     using VolumeSourceList = boost::fusion::list<TestSource1, TestSource2, TestVectorFieldSource1>;
 
@@ -384,10 +385,6 @@ int main(int argc, char** argv)
 
     // Create isaac visualization object
     auto visualization = new IsaacVisualization<
-        DevHost, // Alpaka specific Host Dev Type
-        Acc, // Alpaka specific Accelerator Dev Type
-        Stream, // Alpaka specific Stream Type
-        AccDim, // Alpaka specific Acceleration Dimension Type
         VolumeSourceList, // The boost::fusion list of Source Types
         FieldSourceList,
         ParticleList,
