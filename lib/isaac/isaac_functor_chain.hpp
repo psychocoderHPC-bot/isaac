@@ -29,12 +29,14 @@
 
 namespace isaac
 {
-    template<typename T_Acc>
-    using FunctorChainPointerN = isaac_float (*)(T_Acc const&, void const*, isaac_int);
+    // Backend-neutral device function pointer. The accelerator handle is
+    // passed as void const* because every stored functor ignores it; this
+    // keeps one device-global entity valid for CPU, CUDA and HIP builds.
+    using FunctorChainPointer = isaac_float (*)(void const*, void const*, isaac_int);
 
     using ParamArray = isaac::isaac_float4[ISAAC_MAX_SOURCES * ISAAC_MAX_FUNCTORS];
-    ALPAKA_STATIC_ACC_MEM_GLOBAL alpaka::DevGlobal<TAcc, ParamArray> FunctorParameter;
-    ALPAKA_STATIC_ACC_MEM_GLOBAL alpaka::DevGlobal<TAcc, FunctorChainPointerN<TAcc>[ISAAC_MAX_SOURCES]> FunctionChain;
+    ALPAKA_DEVICE_GLOBAL(inline, (ParamArray), FunctorParameter);
+    ALPAKA_DEVICE_GLOBAL(inline, (FunctorChainPointer[ISAAC_MAX_SOURCES]), FunctionChain);
 
     template<int T_n>
     struct DestArrayStruct
@@ -48,14 +50,14 @@ namespace isaac
         isaac_float_dim<T_featureDim> const& data,
         const int nr)
     {
-        return FunctionChain<T_Acc>.get()[nr](acc, &data, nr);
+        return FunctionChain.get()[nr](&acc, &data, nr);
     }
 
     template<typename T_FunctorVector, int T_featureDim, int T_nr>
     struct FillFunctorChainPointerKernelStruct
     {
 	template<typename T_Acc>
-        ISAAC_DEVICE static FunctorChainPointerN<T_Acc> call(T_Acc const& acc, isaac_int const* const bytecode)
+        ISAAC_DEVICE static FunctorChainPointer call(T_Acc const& acc, isaac_int const* const bytecode)
         {
 #define ISAAC_SUB_CALL(Z, I, U)                                                                                       \
     if(bytecode[ISAAC_MAX_FUNCTORS - T_nr] == I)                                                                      \
@@ -70,11 +72,11 @@ namespace isaac
         }
     };
 
-    template<typename T_Acc, typename T_FunctorVector, int T_featureDim>
-    ISAAC_DEVICE isaac_float generateFunctorChain(T_Acc const& acc, void const* const data, isaac_int const srcID)
+    template<typename T_FunctorVector, int T_featureDim>
+    ISAAC_DEVICE isaac_float generateFunctorChain(void const* acc, void const* const data, isaac_int const srcID)
     {
 #define ISAAC_LEFT_DEF(Z, I, U) boost::mpl::at_c< T_FunctorVector, ISAAC_MAX_FUNCTORS - I - 1 >::type::call(acc,
-#define ISAAC_RIGHT_DEF(Z, I, U) , FunctorParameter<T_Acc>.get()[ srcID * ISAAC_MAX_FUNCTORS + I ] )
+#define ISAAC_RIGHT_DEF(Z, I, U) , FunctorParameter.get()[ srcID * ISAAC_MAX_FUNCTORS + I ] )
 #define ISAAC_LEFT BOOST_PP_REPEAT(ISAAC_MAX_FUNCTORS, ISAAC_LEFT_DEF, ~)
 #define ISAAC_RIGHT BOOST_PP_REPEAT(ISAAC_MAX_FUNCTORS, ISAAC_RIGHT_DEF, ~)
         auto const value = *reinterpret_cast<isaac_float_dim<T_featureDim> const*>(data);
@@ -95,9 +97,9 @@ namespace isaac
         >
     {
 	template<typename T_Acc>
-        ISAAC_DEVICE static FunctorChainPointerN<T_Acc> call(T_Acc const& acc, isaac_int const* const bytecode)
+        ISAAC_DEVICE static FunctorChainPointer call(T_Acc const& acc, isaac_int const* const bytecode)
         {
-            return generateFunctorChain<T_Acc, T_FunctorVector, T_featureDim>;
+            return generateFunctorChain<T_FunctorVector, T_featureDim>;
         }
     };
 
@@ -105,7 +107,7 @@ namespace isaac
     struct FillFunctorChainPointerKernel
     {
         template<typename T_Acc>
-        ISAAC_DEVICE void operator()(T_Acc const& acc, FunctorChainPointerN<T_Acc>* const functorChain) const
+        ISAAC_DEVICE void operator()(T_Acc const& acc, FunctorChainPointer* const functorChain) const
         {
             isaac_int bytecode[ISAAC_MAX_FUNCTORS];
             for(int i = 0; i < ISAAC_MAX_FUNCTORS; i++)
@@ -144,13 +146,12 @@ namespace isaac
         template<typename T_Acc>
         ISAAC_DEVICE void operator()(
             T_Acc const& acc,
-            FunctorChainPointerN<T_Acc>* const functorChainChooseDevice,
-            FunctorChainPointerN<T_Acc> const* const functorChain,
+            FunctorChainPointer const* const functorChain,
             T_Dest dest) const
         {
             for(int i = 0; i < T_count; i++)
             {
-                functorChainChooseDevice[i] = functorChain[dest.nr[i]];
+                FunctionChain.get()[i] = functorChain[dest.nr[i]];
             }
         }
     };

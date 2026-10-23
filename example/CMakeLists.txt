@@ -8,12 +8,49 @@ if(POLICY CMP0144)
 endif()
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 20)
 
 set(ISAAC_DIR "${CMAKE_CURRENT_LIST_DIR}/../lib")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${ISAAC_DIR})
-set(ALPAKA_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../alpaka/" CACHE STRING  "The location of the alpaka library")
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${ALPAKA_ROOT}")
+
+# Select the alpaka3 backend. The value is translated to the matching alpaka
+# options below; only one accelerator dependency is enabled at a time.
+set(ISAAC_BACKEND "cpu" CACHE STRING "Accelerator backend to compile for (cpu, omp, cuda, hip)")
+set_property(CACHE ISAAC_BACKEND PROPERTY STRINGS "cpu" "omp" "cuda" "hip")
+
+set(alpaka_DEP_CUDA OFF CACHE BOOL "Enable the CUDA dependency of alpaka" FORCE)
+set(alpaka_DEP_HIP OFF CACHE BOOL "Enable the HIP dependency of alpaka" FORCE)
+set(alpaka_DEP_OMP OFF CACHE BOOL "Enable the OpenMP dependency of alpaka" FORCE)
+set(alpaka_EXEC_CpuSerial ON CACHE BOOL "Enable the serial CPU executor of alpaka" FORCE)
+set(alpaka_EXEC_CpuOmpBlocks OFF CACHE BOOL "Enable the OpenMP blocks executor of alpaka" FORCE)
+set(alpaka_EXEC_GpuCuda OFF CACHE BOOL "Enable the CUDA executor of alpaka" FORCE)
+set(alpaka_EXEC_GpuHip OFF CACHE BOOL "Enable the HIP executor of alpaka" FORCE)
+set(alpaka_RELOCATABLE_DEVICE_CODE OFF CACHE STRING "Enable relocatable device code" FORCE)
+
+if(ISAAC_BACKEND STREQUAL "cpu")
+    # serial CPU executor is enabled by default
+elseif(ISAAC_BACKEND STREQUAL "omp")
+    set(alpaka_DEP_OMP ON CACHE BOOL "Enable the OpenMP dependency of alpaka" FORCE)
+    set(alpaka_EXEC_CpuOmpBlocks ON CACHE BOOL "Enable the OpenMP blocks executor of alpaka" FORCE)
+elseif(ISAAC_BACKEND STREQUAL "cuda")
+    set(alpaka_DEP_CUDA ON CACHE BOOL "Enable the CUDA dependency of alpaka" FORCE)
+    set(alpaka_EXEC_GpuCuda ON CACHE BOOL "Enable the CUDA executor of alpaka" FORCE)
+    set(alpaka_CUDA_NvidiaGpu ON CACHE BOOL "Enable api::cuda and deviceKind::nvidiaGpu" FORCE)
+    set(alpaka_RELOCATABLE_DEVICE_CODE ON CACHE STRING "Enable relocatable device code" FORCE)
+elseif(ISAAC_BACKEND STREQUAL "hip")
+    set(alpaka_DEP_HIP ON CACHE BOOL "Enable the HIP dependency of alpaka" FORCE)
+    set(alpaka_EXEC_GpuHip ON CACHE BOOL "Enable the HIP executor of alpaka" FORCE)
+    set(alpaka_HIP_AmdGpu ON CACHE BOOL "Enable api::hip and deviceKind::amdGpu" FORCE)
+    set(alpaka_RELOCATABLE_DEVICE_CODE ON CACHE STRING "Enable relocatable device code" FORCE)
+else()
+    message(FATAL_ERROR "Unknown ISAAC_BACKEND '${ISAAC_BACKEND}', expected cpu, omp, cuda, or hip")
+endif()
+
+# Consume alpaka3 from the pinned submodule.
+add_subdirectory(
+    "${CMAKE_CURRENT_LIST_DIR}/../thirdParty/alpaka"
+    "${CMAKE_CURRENT_BINARY_DIR}/alpaka"
+)
 
 find_package(ISAAC 1.1.0 REQUIRED)
 
@@ -37,6 +74,11 @@ if(${ISAAC_STEREO} STREQUAL "Anaglyph")
 endif()
 
 
-ALPAKA_ADD_EXECUTABLE(isaac_example ${CMAKE_SOURCE_DIR}/example.cpp)
+add_executable(isaac_example ${CMAKE_SOURCE_DIR}/example.cpp)
+# alpaka_finalize() stages accelerator sources into
+# <build>/alpaka_build_files/<lang>/, so a quoted include of example_details.hpp
+# is resolved relative to the staged copy, not the original example directory.
+target_include_directories(isaac_example PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 target_link_libraries(isaac_example PUBLIC ${ISAAC_LIBRARIES})
+alpaka_finalize(isaac_example)
 install(TARGETS isaac_example DESTINATION bin )

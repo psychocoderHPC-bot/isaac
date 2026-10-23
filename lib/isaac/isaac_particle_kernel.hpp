@@ -136,7 +136,7 @@ namespace isaac
         ) const
         {
             // get pixel values from thread ids
-            auto alpThreadIdx = alpaka::getIdx<alpaka::Grid, alpaka::Threads>(acc);
+            auto alpThreadIdx = acc.getIdxWithin(alpaka::onAcc::origin::grid, alpaka::onAcc::unit::threads);
             isaac_uint2 pixel = isaac_uint2(alpThreadIdx[2], alpThreadIdx[1]);
             // apply framebuffer offset to pixel
             // stop if pixel position is out of bounds
@@ -171,7 +171,7 @@ namespace isaac
             isaac_uint3 currentCell = isaac_uint3(glm::clamp(
                 isaac_int3(currentPos / scale),
                 isaac_int3(0),
-                isaac_int3(SimulationSize<T_Acc>.get().localParticleSize - ISAAC_IDX_TYPE(1))));
+                isaac_int3(SimulationSize.get().localParticleSize - ISAAC_IDX_TYPE(1))));
 
             isaac_float rayLength = ray.endDepth - ray.startDepth;
             isaac_float testedLength = 0;
@@ -202,7 +202,7 @@ namespace isaac
 
             // iterate over all cells on the ray path
             // check if the ray leaves the local volume, has a particle hit or exceeds the max ray distance
-            while(isInUpperBounds(currentCell, SimulationSize<T_Acc>.get().localParticleSize) && particleHit == false
+            while(isInUpperBounds(currentCell, SimulationSize.get().localParticleSize) && particleHit == false
                   && testedLength <= rayLength)
             {
                 // calculate particle intersections for each particle source
@@ -269,14 +269,12 @@ namespace isaac
         typename T_Filter,
         ISAAC_IDX_TYPE T_transferSize,
         typename T_WorkDiv,
-        typename T_Acc,
-        typename T_Stream,
         int T_sourceOffset,
         int T_n>
     struct ParticleRenderKernelCaller
     {
         inline static void call(
-            T_Stream stream,
+            Stream& stream,
             const GBuffer& gBuffer,
             const T_ParticleList& particleSources,
             const T_TransferArray& transferArray,
@@ -295,8 +293,6 @@ namespace isaac
                     typename boost::mpl::push_back<T_Filter, boost::mpl::false_>::type,
                     T_transferSize,
                     T_WorkDiv,
-                    T_Acc,
-                    T_Stream,
                     T_sourceOffset,
                     T_n - 1>::
                     call(stream, gBuffer, particleSources, transferArray, sourceWeight, workdiv, scale, clipping);
@@ -310,8 +306,6 @@ namespace isaac
                     typename boost::mpl::push_back<T_Filter, boost::mpl::true_>::type,
                     T_transferSize,
                     T_WorkDiv,
-                    T_Acc,
-                    T_Stream,
                     T_sourceOffset,
                     T_n - 1>::
                     call(stream, gBuffer, particleSources, transferArray, sourceWeight, workdiv, scale, clipping);
@@ -326,8 +320,6 @@ namespace isaac
         typename T_Filter,
         ISAAC_IDX_TYPE T_transferSize,
         typename T_WorkDiv,
-        typename T_Acc,
-        typename T_Stream,
         int T_sourceOffset>
     struct ParticleRenderKernelCaller<
         T_ParticleList,
@@ -336,14 +328,12 @@ namespace isaac
         T_Filter,
         T_transferSize,
         T_WorkDiv,
-        T_Acc,
-        T_Stream,
         T_sourceOffset,
         0 //<-- spezialisation
         >
     {
         inline static void call(
-            T_Stream stream,
+            Stream& stream,
             const GBuffer& gBuffer,
             const T_ParticleList& particleSources,
             const T_TransferArray& transferArray,
@@ -360,9 +350,7 @@ namespace isaac
                 T_transferSize,
                 T_sourceOffset>
                 kernel;
-            auto const instance = alpaka::createTaskKernel<
-                T_Acc>(workdiv, kernel, gBuffer, particleSources, transferArray, sourceWeight, scale, clipping);
-            alpaka::enqueue(stream, instance);
+            stream.enqueue(workdiv, kernel, gBuffer, particleSources, transferArray, sourceWeight, scale, clipping);
         }
     };
 } // namespace isaac

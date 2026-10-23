@@ -316,15 +316,13 @@ namespace isaac
     template<typename T_DevAcc, typename T_Type, int T_textureDim, IndexType T_indexType = IndexType::SWEEP>
     class TextureAllocator
     {
-        using FraDim = alpaka::DimInt<1>;
-
     public:
         TextureAllocator(
             const T_DevAcc& devAcc,
             const isaac_size_dim<T_textureDim>& size,
             const isaac_size_dim<T_textureDim>& guardSize = isaac_size_dim<T_textureDim>(0))
             : bufferExtent(0)
-            , buffer(alpaka::allocBuf<T_Type, ISAAC_IDX_TYPE>(devAcc, bufferExtent))
+            , buffer(alpaka::onHost::alloc<T_Type>(devAcc, bufferExtent))
         {
             const isaac_size_dim<T_textureDim> sizeWithGuard = size + ISAAC_IDX_TYPE(2) * guardSize;
 
@@ -349,15 +347,15 @@ namespace isaac
                 }
             }
 
-            buffer = alpaka::allocBuf<T_Type, ISAAC_IDX_TYPE>(devAcc, bufferExtent);
+            buffer = alpaka::onHost::alloc<T_Type>(devAcc, bufferExtent);
 
-            texture.init(alpaka::getPtrNative(buffer), size, guardSize);
+            texture.init(alpaka::onHost::data(buffer), size, guardSize);
         }
 
         template<typename T_Queue, typename T_ViewDst>
         void copyToBuffer(T_Queue& queue, T_ViewDst& viewDst) const
         {
-            alpaka::memcpy(queue, viewDst, buffer, bufferExtent);
+            alpaka::onHost::memcpy(queue, viewDst, buffer, bufferExtent);
         }
 
         template<typename T_Queue, typename T_DstDev>
@@ -365,13 +363,13 @@ namespace isaac
             const
         {
             assert(bufferExtent == textureDst.getBufferExtent());
-            alpaka::memcpy(queue, textureDst.getTextureView(), buffer, bufferExtent);
+            alpaka::onHost::memcpy(queue, textureDst.getTextureView(), buffer, bufferExtent);
         }
 
         template<typename T_Queue>
         void clearColor(T_Queue& queue)
         {
-            alpaka::memset(queue, buffer, 0, bufferExtent);
+            alpaka::onHost::memset(queue, buffer, 0, bufferExtent);
         }
 
         Texture<T_Type, T_textureDim, T_indexType>& getTexture()
@@ -379,7 +377,7 @@ namespace isaac
             return texture;
         }
 
-        alpaka::Buf<T_DevAcc, T_Type, FraDim, ISAAC_IDX_TYPE>& getTextureView()
+        BufferFor<T_DevAcc, T_Type>& getTextureView()
         {
             return buffer;
         }
@@ -394,7 +392,7 @@ namespace isaac
 
         ISAAC_IDX_TYPE bufferExtent;
 
-        alpaka::Buf<T_DevAcc, T_Type, FraDim, ISAAC_IDX_TYPE> buffer;
+        BufferFor<T_DevAcc, T_Type> buffer;
     };
 
 
@@ -402,15 +400,13 @@ namespace isaac
     template<typename T_DevAcc, typename T_Type, IndexType T_indexType = IndexType::SWEEP>
     class SyncedTexture3DAllocator
     {
-        using FraDim = alpaka::DimInt<1>;
-
     public:
         SyncedTexture3DAllocator(
             const T_DevAcc& devAcc,
             const isaac_size3& size,
             const isaac_size3& guardSize = isaac_size3(0))
             : bufferExtent(0)
-            , buffer(alpaka::allocBuf<T_Type, ISAAC_IDX_TYPE>(devAcc, bufferExtent))
+            , buffer(alpaka::onHost::alloc<T_Type>(devAcc, bufferExtent))
         {
             const isaac_size3 sizeWithGuard = size + ISAAC_IDX_TYPE(2) * guardSize;
 
@@ -436,9 +432,9 @@ namespace isaac
                 }
             }
 
-            buffer = alpaka::allocBuf<T_Type, ISAAC_IDX_TYPE>(devAcc, bufferExtent);
+            buffer = alpaka::onHost::alloc<T_Type>(devAcc, bufferExtent);
             totalAllocation += bufferExtent;
-            texture.init(alpaka::getPtrNative(buffer), size, guardSize);
+            texture.init(alpaka::onHost::data(buffer), size, guardSize);
 
             // std::cout << "Guard buffer allocations: " << std::endl;
 
@@ -451,13 +447,13 @@ namespace isaac
 
                 ISAAC_IDX_TYPE extent = guardTexSize.x * guardTexSize.y * guardTexSize.z;
 
-                ownGuardBuffers.push_back(alpaka::allocBuf<T_Type, ISAAC_IDX_TYPE>(devAcc, extent));
+                ownGuardBuffers.push_back(alpaka::onHost::alloc<T_Type>(devAcc, extent));
                 totalAllocation += extent;
-                ownGuardTextures.array[i].init(alpaka::getPtrNative(ownGuardBuffers.back()), guardTexSize);
+                ownGuardTextures.array[i].init(alpaka::onHost::data(ownGuardBuffers.back()), guardTexSize);
 
-                neighbourGuardBuffers.push_back(alpaka::allocBuf<T_Type, ISAAC_IDX_TYPE>(devAcc, extent));
+                neighbourGuardBuffers.push_back(alpaka::onHost::alloc<T_Type>(devAcc, extent));
                 totalAllocation += extent;
-                neighbourGuardTextures.array[i].init(alpaka::getPtrNative(neighbourGuardBuffers.back()), guardTexSize);
+                neighbourGuardTextures.array[i].init(alpaka::onHost::data(neighbourGuardBuffers.back()), guardTexSize);
 
                 /*
                 std::cout << "side: (" << direction.x << ", " << direction.y << ", " << direction.z
@@ -473,20 +469,20 @@ namespace isaac
         template<typename T_Queue, typename T_ViewDst>
         void copyToBuffer(T_Queue& queue, T_ViewDst& viewDst) const
         {
-            alpaka::memcpy(queue, viewDst, buffer, bufferExtent);
+            alpaka::onHost::memcpy(queue, viewDst, buffer, bufferExtent);
         }
 
         template<typename T_Queue, typename T_TextureAllocator>
         void copyToTexture(T_Queue& queue, T_TextureAllocator& textureDst) const
         {
             assert(bufferExtent == textureDst.getBufferExtent());
-            alpaka::memcpy(queue, textureDst.getTextureView(), buffer, bufferExtent);
+            alpaka::onHost::memcpy(queue, textureDst.getTextureView(), buffer, bufferExtent);
         }
 
         template<typename T_Queue>
         void clearColor(T_Queue& queue)
         {
-            alpaka::memset(queue, buffer, 0, bufferExtent);
+            alpaka::onHost::memset(queue, buffer, 0, bufferExtent);
         }
 
         Texture<T_Type, 3, T_indexType>& getTexture()
@@ -514,7 +510,7 @@ namespace isaac
             return neighbourGuardTextures.array[index];
         }
 
-        alpaka::Buf<T_DevAcc, T_Type, FraDim, ISAAC_IDX_TYPE>& getTextureView()
+        BufferFor<T_DevAcc, T_Type>& getTextureView()
         {
             return buffer;
         }
@@ -531,9 +527,9 @@ namespace isaac
 
         ISAAC_IDX_TYPE bufferExtent;
 
-        alpaka::Buf<T_DevAcc, T_Type, FraDim, ISAAC_IDX_TYPE> buffer;
-        std::vector<alpaka::Buf<T_DevAcc, T_Type, FraDim, ISAAC_IDX_TYPE>> ownGuardBuffers;
-        std::vector<alpaka::Buf<T_DevAcc, T_Type, FraDim, ISAAC_IDX_TYPE>> neighbourGuardBuffers;
+        BufferFor<T_DevAcc, T_Type> buffer;
+        std::vector<BufferFor<T_DevAcc, T_Type>> ownGuardBuffers;
+        std::vector<BufferFor<T_DevAcc, T_Type>> neighbourGuardBuffers;
     };
 
 

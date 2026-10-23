@@ -168,7 +168,7 @@ set(ISAAC_PRIVATE_FOUND true)
 
 # alpaka target is already provided by another project
 if(NOT TARGET alpaka::alpaka)
-    set(isaac_MIN_ALPAKA_VERSION 2.0.0)
+    set(isaac_MIN_ALPAKA_VERSION 3.0.0)
     find_package(alpaka ${isaac_MIN_ALPAKA_VERSION})
     if (NOT alpaka_FOUND)
         set(ISAAC_PRIVATE_FOUND false)
@@ -205,10 +205,12 @@ else()
 endif()
 
 ################################################################################
-# Warning if C++11 is not activated
+# Warning if C++20 is not activated
 ################################################################################
-if (CMAKE_CXX_STANDARD EQUAL 98)
-    message( STATUS "At least C++ standard 11 must be enabled!" )
+# ISAAC's headers require C++20 since the alpaka3 migration. Linking
+# alpaka::alpaka also propagates the cxx_std_20 compile feature.
+if (CMAKE_CXX_STANDARD AND CMAKE_CXX_STANDARD LESS 20)
+    message( STATUS "At least C++ standard 20 must be enabled!" )
 endif()
 
 

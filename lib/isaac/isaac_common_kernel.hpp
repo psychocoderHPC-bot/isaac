@@ -21,21 +21,22 @@
 #include "isaac_macros.hpp"
 #include "isaac_texture.hpp"
 
+#include <cmath>
 #include <limits>
 
 namespace isaac
 {
     // inverse mvp matrix
-    ALPAKA_STATIC_ACC_MEM_GLOBAL alpaka::DevGlobal<TAcc, isaac_mat4> InverseMVPMatrix;
+    ALPAKA_DEVICE_GLOBAL(inline, isaac_mat4, InverseMVPMatrix);
 
     // modelview matrix
-    ALPAKA_STATIC_ACC_MEM_GLOBAL alpaka::DevGlobal<TAcc, isaac_mat4> ModelViewMatrix;
+    ALPAKA_DEVICE_GLOBAL(inline, isaac_mat4, ModelViewMatrix);
 
     // projection matrix
-    ALPAKA_STATIC_ACC_MEM_GLOBAL alpaka::DevGlobal<TAcc, isaac_mat4> ProjectionMatrix;
+    ALPAKA_DEVICE_GLOBAL(inline, isaac_mat4, ProjectionMatrix);
 
     // simulation size properties
-    ALPAKA_STATIC_ACC_MEM_GLOBAL alpaka::DevGlobal<TAcc, SimulationSizeStruct> SimulationSize;
+    ALPAKA_DEVICE_GLOBAL(inline, SimulationSizeStruct, SimulationSize);
 
     struct Ray
     {
@@ -71,15 +72,15 @@ namespace isaac
         endPos.w = isaac_float(1);
 
         // apply inverse modelview transform to ray start/end and get ray start/end as worldspace
-        startPos = InverseMVPMatrix<T_Acc>.get() * startPos;
-        endPos = InverseMVPMatrix<T_Acc>.get() * endPos;
+        startPos = InverseMVPMatrix.get() * startPos;
+        endPos = InverseMVPMatrix.get() * endPos;
 
         Ray ray;
         // apply the w-clip
         ray.start = startPos / startPos.w;
         ray.end = endPos / endPos.w;
 
-        isaac_float maxSize = SimulationSize<T_Acc>.get().maxGlobalSizeScaled * isaac_float(0.5);
+        isaac_float maxSize = SimulationSize.get().maxGlobalSizeScaled * isaac_float(0.5);
 
         // scale to globale grid size
         ray.start = ray.start * maxSize;
@@ -102,14 +103,14 @@ namespace isaac
         for(isaac_uint i = 0; i < inputClipping.count; i++)
         {
             clipping.elem[i].position
-                = inputClipping.elem[i].position * isaac_float3(SimulationSize<T_Acc>.get().globalSizeScaled) * isaac_float(0.5);
+                = inputClipping.elem[i].position * isaac_float3(SimulationSize.get().globalSizeScaled) * isaac_float(0.5);
             clipping.elem[i].normal = inputClipping.elem[i].normal;
         }
 
         // move to local (scaled) grid
         // get offset of subvolume in global volume
         isaac_float3 position_offset = isaac_float3(
-            isaac_int3(SimulationSize<T_Acc>.get().globalSizeScaled) / 2 - isaac_int3(SimulationSize<T_Acc>.get().positionScaled));
+            isaac_int3(SimulationSize.get().globalSizeScaled) / 2 - isaac_int3(SimulationSize.get().positionScaled));
 
         // apply subvolume offset to start and end
         ray.start = ray.start + position_offset;
@@ -122,10 +123,10 @@ namespace isaac
         }
 
         // clip ray on volume bounding box
-        isaac_int3 bbMinLocal = glm::max(isaac_int3(0), -SimulationSize<T_Acc>.get().positionScaled);
+        isaac_int3 bbMinLocal = glm::max(isaac_int3(0), -SimulationSize.get().positionScaled);
         isaac_int3 bbMaxLocal = glm::min(
-            isaac_int3(SimulationSize<T_Acc>.get().localSizeScaled),
-            isaac_int3(SimulationSize<T_Acc>.get().globalSizeScaled) - SimulationSize<T_Acc>.get().positionScaled);
+            isaac_int3(SimulationSize.get().localSizeScaled),
+            isaac_int3(SimulationSize.get().globalSizeScaled) - SimulationSize.get().positionScaled);
         isaac_float3 bbIntersectionMin = (isaac_float3(bbMinLocal) - ray.start) / ray.dir;
         isaac_float3 bbIntersectionMax = (isaac_float3(bbMaxLocal) - ray.start) / ray.dir;
 
@@ -143,8 +144,8 @@ namespace isaac
             float sign = glm::sign(ray.dir[i]);
             // only clip if it is an outer edge of the simulation volume
             if(bbIntersectionMin[i] == ray.startDepth
-               && ((SimulationSize<T_Acc>.get().position[i] == 0 && sign + 1)
-                   || (SimulationSize<T_Acc>.get().position[i] + SimulationSize<T_Acc>.get().localSize[i] == SimulationSize<T_Acc>.get().globalSize[i]
+               && ((SimulationSize.get().position[i] == 0 && sign + 1)
+                   || (SimulationSize.get().position[i] + SimulationSize.get().localSize[i] == SimulationSize.get().globalSize[i]
                        && sign - 1)))
             {
                 ray.isClipped = true;
@@ -188,7 +189,7 @@ namespace isaac
         ray.startDepth = glm::max(ray.startDepth, isaac_float(ISAAC_Z_NEAR));
 
         // return if the ray doesn't hit the volume
-        if(ray.startDepth > ray.endDepth || isinf(ray.startDepth) || isinf(ray.endDepth))
+        if(ray.startDepth > ray.endDepth || std::isinf(ray.startDepth) || std::isinf(ray.endDepth))
             return false;
 
         return true;
@@ -201,7 +202,7 @@ namespace isaac
         {
             isaac_uint2 pixel;
             // get pixel values from thread ids
-            auto alpThreadIdx = alpaka::getIdx<alpaka::Grid, alpaka::Threads>(acc);
+            auto alpThreadIdx = acc.getIdxWithin(alpaka::onAcc::origin::grid, alpaka::onAcc::unit::threads);
             pixel.x = isaac_uint(alpThreadIdx[2]);
             pixel.y = isaac_uint(alpThreadIdx[1]);
 
@@ -232,7 +233,7 @@ namespace isaac
         {
             isaac_uint2 pixel;
             // get pixel values from thread ids
-            auto alpThreadIdx = alpaka::getIdx<alpaka::Grid, alpaka::Threads>(acc);
+            auto alpThreadIdx = acc.getIdxWithin(alpaka::onAcc::origin::grid, alpaka::onAcc::unit::threads);
             pixel.x = isaac_uint(alpThreadIdx[2]);
             pixel.y = isaac_uint(alpThreadIdx[1]);
 
@@ -300,7 +301,7 @@ namespace isaac
             // depth as color for debug
             else if(mode == 5)
             {
-                isaac_float depth = gBuffer.depth[pixel] / isaac_float(SimulationSize<T_Acc>.get().maxGlobalSizeScaled);
+                isaac_float depth = gBuffer.depth[pixel] / isaac_float(SimulationSize.get().maxGlobalSizeScaled);
                 gBuffer.color[pixel] = transformColor(isaac_float4(isaac_float3(depth), color.a));
                 gBuffer.depth[pixel] = isaac_float(0);
             }
@@ -360,7 +361,7 @@ namespace isaac
             isaac_float3 scale,
             isaac_float3 mask) const
         {
-            auto alpThreadIdx = alpaka::getIdx<alpaka::Grid, alpaka::Threads>(acc);
+            auto alpThreadIdx = acc.getIdxWithin(alpaka::onAcc::origin::grid, alpaka::onAcc::unit::threads);
             isaac_int3 coord = {isaac_int(alpThreadIdx[2]), isaac_int(alpThreadIdx[1]), isaac_int(alpThreadIdx[0])};
             if(!isInUpperBounds(coord, srcTex.getSize()))
                 return;
@@ -392,7 +393,7 @@ namespace isaac
             isaac_float3 scale,
             isaac_float3 mask) const
         {
-            auto alpThreadIdx = alpaka::getIdx<alpaka::Grid, alpaka::Threads>(acc);
+            auto alpThreadIdx = acc.getIdxWithin(alpaka::onAcc::origin::grid, alpaka::onAcc::unit::threads);
             isaac_int3 coord = {isaac_int(alpThreadIdx[2]), isaac_int(alpThreadIdx[1]), isaac_int(alpThreadIdx[0])};
             if(!isInUpperBounds(coord, dstTex.getSize()))
                 return;
@@ -423,7 +424,7 @@ namespace isaac
             isaac_float min,
             isaac_float max) const
         {
-            auto alpThreadIdx = alpaka::getIdx<alpaka::Grid, alpaka::Threads>(acc);
+            auto alpThreadIdx = acc.getIdxWithin(alpaka::onAcc::origin::grid, alpaka::onAcc::unit::threads);
             isaac_int3 coord = {isaac_int(alpThreadIdx[2]), isaac_int(alpThreadIdx[1]), isaac_int(alpThreadIdx[0])};
             if(!isInUpperBounds(coord, dstTex.getSize()))
                 return;
@@ -442,7 +443,7 @@ namespace isaac
             Tex3D<isaac_float> texture,
             const isaac_int3 localSize) const
         {
-            auto alpThreadIdx = alpaka::getIdx<alpaka::Grid, alpaka::Threads>(acc);
+            auto alpThreadIdx = acc.getIdxWithin(alpaka::onAcc::origin::grid, alpaka::onAcc::unit::threads);
             isaac_int3 coord = {isaac_int(alpThreadIdx[2]), isaac_int(alpThreadIdx[1]), isaac_int(alpThreadIdx[0])};
             if(!isInUpperBounds(coord, localSize + isaac_int3(2 * T_Source::guardSize)))
                 return;
@@ -462,7 +463,7 @@ namespace isaac
             const T_SrcTexture srcTexture,
             T_DstTexture guardTexture) const
         {
-            auto alpThreadIdx = alpaka::getIdx<alpaka::Grid, alpaka::Threads>(acc);
+            auto alpThreadIdx = acc.getIdxWithin(alpaka::onAcc::origin::grid, alpaka::onAcc::unit::threads);
             isaac_int3 coord = {isaac_int(alpThreadIdx[2]), isaac_int(alpThreadIdx[1]), isaac_int(alpThreadIdx[0])};
             if(!isInUpperBounds(coord, isaac_int3(guardTexture.getSize())))
                 return;
@@ -485,7 +486,7 @@ namespace isaac
             const T_SrcTexture guardTexture,
             T_DstTexture mainTexture) const
         {
-            auto alpThreadIdx = alpaka::getIdx<alpaka::Grid, alpaka::Threads>(acc);
+            auto alpThreadIdx = acc.getIdxWithin(alpaka::onAcc::origin::grid, alpaka::onAcc::unit::threads);
             isaac_int3 coord = {isaac_int(alpThreadIdx[2]), isaac_int(alpThreadIdx[1]), isaac_int(alpThreadIdx[0])};
             if(!isInUpperBounds(coord, isaac_int3(guardTexture.getSize())))
                 return;
@@ -518,7 +519,7 @@ namespace isaac
             const isaac_int advectionSeedingTime,
             isaac_int timeStep) const
         {
-            auto alpThreadIdx = alpaka::getIdx<alpaka::Grid, alpaka::Threads>(acc);
+            auto alpThreadIdx = acc.getIdxWithin(alpaka::onAcc::origin::grid, alpaka::onAcc::unit::threads);
             isaac_int3 coord = {isaac_int(alpThreadIdx[2]), isaac_int(alpThreadIdx[1]), isaac_int(alpThreadIdx[0])};
             if(!isInUpperBounds(coord, localSize))
                 return;
@@ -719,7 +720,7 @@ namespace isaac
             Tex3D<isaac_byte4, T_indexType> volumeTexture,
             Tex3D<isaac_byte4, T_indexType> isoTexture) const
         {
-            auto alpThreadIdx = alpaka::getIdx<alpaka::Grid, alpaka::Threads>(acc);
+            auto alpThreadIdx = acc.getIdxWithin(alpaka::onAcc::origin::grid, alpaka::onAcc::unit::threads);
             isaac_int3 coord = {isaac_int(alpThreadIdx[2]), isaac_int(alpThreadIdx[1]), isaac_int(alpThreadIdx[0])};
             if(!isInUpperBounds(coord, localSize))
                 return;
