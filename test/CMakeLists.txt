@@ -29,23 +29,20 @@ set(alpaka_EXEC_GpuHip OFF CACHE BOOL "Enable the HIP executor of alpaka" FORCE)
 set(alpaka_RELOCATABLE_DEVICE_CODE OFF CACHE STRING "Enable relocatable device code" FORCE)
 
 if(ISAAC_BACKEND STREQUAL "cpu")
-    set(ISAAC_BACKEND_DEFINITION ISAAC_BACKEND_CPU)
+    # serial CPU executor is enabled by default
 elseif(ISAAC_BACKEND STREQUAL "omp")
     set(alpaka_DEP_OMP ON CACHE BOOL "Enable the OpenMP dependency of alpaka" FORCE)
     set(alpaka_EXEC_CpuOmpBlocks ON CACHE BOOL "Enable the OpenMP blocks executor of alpaka" FORCE)
-    set(ISAAC_BACKEND_DEFINITION ISAAC_BACKEND_CPU)
 elseif(ISAAC_BACKEND STREQUAL "cuda")
     set(alpaka_DEP_CUDA ON CACHE BOOL "Enable the CUDA dependency of alpaka" FORCE)
     set(alpaka_EXEC_GpuCuda ON CACHE BOOL "Enable the CUDA executor of alpaka" FORCE)
     set(alpaka_CUDA_NvidiaGpu ON CACHE BOOL "Enable api::cuda and deviceKind::nvidiaGpu" FORCE)
     set(alpaka_RELOCATABLE_DEVICE_CODE ON CACHE STRING "Enable relocatable device code" FORCE)
-    set(ISAAC_BACKEND_DEFINITION ISAAC_BACKEND_CUDA)
 elseif(ISAAC_BACKEND STREQUAL "hip")
     set(alpaka_DEP_HIP ON CACHE BOOL "Enable the HIP dependency of alpaka" FORCE)
     set(alpaka_EXEC_GpuHip ON CACHE BOOL "Enable the HIP executor of alpaka" FORCE)
     set(alpaka_HIP_AmdGpu ON CACHE BOOL "Enable api::hip and deviceKind::amdGpu" FORCE)
     set(alpaka_RELOCATABLE_DEVICE_CODE ON CACHE STRING "Enable relocatable device code" FORCE)
-    set(ISAAC_BACKEND_DEFINITION ISAAC_BACKEND_HIP)
 else()
     message(FATAL_ERROR "Unknown ISAAC_BACKEND '${ISAAC_BACKEND}', expected cpu, omp, cuda, or hip")
 endif()
@@ -134,7 +131,6 @@ else()
 endif()
 
 target_compile_definitions(isaac_device_globals_test PRIVATE
-    ${ISAAC_BACKEND_DEFINITION}
     -DISAAC_MAX_FUNCTORS=3
     -DISAAC_FUNCTOR_POW_ENABLED=0
     -DISAAC_VALGRIND_TWEAKS=0

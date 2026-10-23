@@ -38,14 +38,19 @@ namespace isaac
 #    define ISAAC_IDX_TYPE size_t
 #endif
 
-    // Concrete alpaka3 device and queue types. ISAAC_BACKEND_* is set by the
-    // example build; without it the host CPU backend is assumed.
+    // alpaka3's onHost::Device and onHost::Queue are templated on the API and
+    // device kind (include/alpaka/onHost/Device.hpp:33,
+    // include/alpaka/onHost/Queue.hpp:32), so a backend-independent concrete
+    // handle does not exist. Select the accelerator from the language macros
+    // that alpaka defines itself when its headers are included
+    // (include/alpaka/core/config.hpp:235 and :258); a consumer therefore does
+    // not need any ISAAC-specific backend definition.
     using HostDevice = alpaka::onHost::Device<alpaka::api::Host, alpaka::deviceKind::Cpu>;
-#if defined(ISAAC_BACKEND_CUDA)
+#if ALPAKA_LANG_CUDA
     using AccDevice = alpaka::onHost::Device<alpaka::api::Cuda, alpaka::deviceKind::NvidiaGpu>;
     inline constexpr auto accApi = alpaka::api::Cuda{};
     inline constexpr auto accDeviceKind = alpaka::deviceKind::NvidiaGpu{};
-#elif defined(ISAAC_BACKEND_HIP)
+#elif ALPAKA_LANG_HIP
     using AccDevice = alpaka::onHost::Device<alpaka::api::Hip, alpaka::deviceKind::AmdGpu>;
     inline constexpr auto accApi = alpaka::api::Hip{};
     inline constexpr auto accDeviceKind = alpaka::deviceKind::AmdGpu{};
